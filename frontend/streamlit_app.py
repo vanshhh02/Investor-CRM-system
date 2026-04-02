@@ -1,40 +1,183 @@
 import streamlit as st
 import requests
 
-BASE_URL = "http://backend:8000"
+BASE_URL = "http://127.0.0.1:8000"
 
-st.set_page_config(page_title="Investor CRM", layout="wide")
+st.set_page_config(layout="wide")
 
-st.title("🚀 AI Investor Outreach CRM")
+# ------------------ GLOBAL CSS ------------------
+st.markdown("""
+<style>
+body {
+    background-color: #0b0f14;
+    color: #e6edf3;
+}
 
-# -------- FETCH LEADS --------
+.block-container {
+    padding: 2rem 3rem;
+}
+
+/* Cards */
+.card {
+    background: #11161c;
+    border: 1px solid #1f2933;
+    border-radius: 12px;
+    padding: 16px;
+}
+
+/* Metric */
+.metric {
+    font-size: 28px;
+    font-weight: 600;
+}
+
+/* Subtext */
+.subtext {
+    color: #8b949e;
+    font-size: 13px;
+}
+
+/* Badge */
+.badge {
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+}
+
+/* Table row */
+.row {
+    padding: 12px;
+    border-bottom: 1px solid #1f2933;
+}
+.row:hover {
+    background: #161b22;
+}
+
+/* Buttons */
+.stButton > button {
+    border-radius: 10px;
+}
+
+/* Progress bar */
+.progress {
+    height: 6px;
+    background: #1f2933;
+    border-radius: 10px;
+}
+.progress-fill {
+    height: 6px;
+    border-radius: 10px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ------------------ SIDEBAR ------------------
+st.sidebar.title("🚀 Investor CRM")
+page = st.sidebar.radio("", ["Dashboard", "Leads", "Reminders", "AI"])
+
+# ------------------ FETCH ------------------
 @st.cache_data(ttl=5)
 def fetch_leads():
     try:
-        res = requests.get(f"{BASE_URL}/leads/")
-        return res.json()
+        return requests.get(f"{BASE_URL}/leads/").json()
     except:
         return []
 
 leads = fetch_leads()
-lead_map = {lead["id"]: lead for lead in leads}
 
-# -------- ADD LEAD --------
-with st.expander("➕ Add New Lead"):
-    col1, col2 = st.columns(2)
+# ------------------ DASHBOARD ------------------
+if page == "Dashboard":
+    st.title("Dashboard")
+    st.caption("Overview of your investor pipeline")
 
-    with col1:
+    total = len(leads)
+    interested = len([l for l in leads if l["stage"] == "Interested"])
+    committed = len([l for l in leads if l["stage"] == "Committed"])
+
+    col1, col2, col3 = st.columns(3)
+
+    def metric_card(title, value, color="white"):
+        return f"""
+        <div class='card'>
+            <div class='subtext'>{title}</div>
+            <div class='metric' style='color:{color}'>{value}</div>
+        </div>
+        """
+
+    col1.markdown(metric_card("Total Leads", total), unsafe_allow_html=True)
+    col2.markdown(metric_card("Interested", interested, "#22c55e"), unsafe_allow_html=True)
+    col3.markdown(metric_card("Committed", committed, "#8b5cf6"), unsafe_allow_html=True)
+
+    st.markdown("### Pipeline Stages")
+
+    stages = ["Cold", "Contacted", "Interested", "Committed"]
+    colors = ["#6366f1", "#f59e0b", "#22c55e", "#8b5cf6"]
+
+    for i, stage in enumerate(stages):
+        count = len([l for l in leads if l["stage"] == stage])
+        percent = (count / total * 100) if total else 0
+
+        st.markdown(f"""
+        <div class='subtext'>{stage} ({count})</div>
+        <div class='progress'>
+            <div class='progress-fill' style='width:{percent}%; background:{colors[i]}'></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+# ------------------ LEADS ------------------
+elif page == "Leads":
+    st.title("Leads")
+
+    col1, col2 = st.columns([3,1])
+
+    search = col1.text_input("Search leads")
+    stage_filter = col2.selectbox("Stage", ["All","Cold","Contacted","Interested","Committed"])
+
+    filtered = leads
+    if search:
+        filtered = [l for l in filtered if search.lower() in l["name"].lower()]
+    if stage_filter != "All":
+        filtered = [l for l in filtered if l["stage"] == stage_filter]
+
+    # TABLE HEADER
+    st.markdown("""
+    <div class='row subtext'>
+        <b>Name</b> | Email | Stage | Tier
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ROWS
+    for l in filtered:
+        stage_color = {
+            "Cold": "#6366f1",
+            "Contacted": "#f59e0b",
+            "Interested": "#22c55e",
+            "Committed": "#8b5cf6"
+        }.get(l["stage"], "#999")
+
+        tier_color = {
+            "High": "#f59e0b",
+            "Medium": "#6366f1",
+            "Low": "#9ca3af"
+        }.get(l["net_worth_tier"], "#999")
+
+        st.markdown(f"""
+        <div class='row'>
+            <b>{l['name']}</b> — {l['email']} <br>
+            <span class='badge' style='background:{stage_color}22;color:{stage_color}'>{l['stage']}</span>
+            <span class='badge' style='background:{tier_color}22;color:{tier_color}'>{l['net_worth_tier']}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ADD LEAD
+    with st.expander("➕ Add Lead"):
         name = st.text_input("Name")
         email = st.text_input("Email")
-
-    with col2:
         linkedin = st.text_input("LinkedIn")
-        tier = st.selectbox("Net Worth Tier", ["High", "Medium", "Low"])
+        tier = st.selectbox("Tier", ["High","Medium","Low"])
+        interests = st.text_input("Interests")
 
-    interests = st.text_input("Interest Areas (comma separated)")
-
-    if st.button("Add Lead"):
-        with st.spinner("Adding lead..."):
+        if st.button("Add Lead"):
             requests.post(f"{BASE_URL}/leads/", json={
                 "name": name,
                 "email": email,
@@ -42,154 +185,64 @@ with st.expander("➕ Add New Lead"):
                 "net_worth_tier": tier,
                 "interest_areas": interests.split(",")
             })
-
-        st.toast("✅ Lead added")
-        st.rerun()
-
-
-# -------- DISPLAY LEADS --------
-st.header("📋 Leads")
-
-if not leads:
-    st.info("No leads yet. Add your first investor 🚀")
-
-cols = st.columns(2)
-
-for i, lead in enumerate(leads):
-    color = {
-        "Cold": "#888",
-        "Contacted": "#f39c12",
-        "Interested": "#2ecc71",
-        "Committed": "#3498db"
-    }.get(lead["stage"], "#888")
-
-    card_html = f"""
-    <div style="padding:10px;border-radius:8px;border:1px solid #333;margin-bottom:10px;">
-        <b>{lead['name']}</b>
-        <span style="color:{color};font-size:12px;"> ● {lead['stage']}</span><br>
-        <span style="font-size:13px;">📧 {lead['email']}</span><br>
-        <span style="font-size:12px;color:gray;">{lead['interest_areas']}</span>
-    </div>
-    """
-
-    with cols[i % 2]:
-        st.markdown(card_html, unsafe_allow_html=True)
-
-
-# -------- ACTIONS --------
-st.header("⚙️ Actions")
-
-if leads:
-    selected_lead_id = st.selectbox(
-        "Select Lead",
-        list(lead_map.keys()),
-        format_func=lambda x: f"{lead_map[x]['name']} ({lead_map[x]['stage']})"
-    )
-
-    col1, col2 = st.columns(2)
-
-    # -------- UPDATE STAGE --------
-    with col1:
-        new_stage = st.selectbox(
-            "Update Stage",
-            ["Cold", "Contacted", "Interested", "Committed"]
-        )
-
-        if st.button("Update Stage"):
-            with st.spinner("Updating stage..."):
-                requests.patch(
-                    f"{BASE_URL}/leads/{selected_lead_id}/stage",
-                    json={"new_stage": new_stage}
-                )
-
-            st.toast("✅ Stage updated")
+            st.success("Added")
             st.rerun()
 
-    # -------- ADD INTERACTION --------
-    with col2:
-        interaction_type = st.selectbox(
-            "Interaction Type",
-            ["call", "email", "meeting"]
-        )
-        notes = st.text_area("Notes")
+# ------------------ REMINDERS ------------------
+elif page == "Reminders":
+    st.title("Reminders")
 
-        if st.button("Add Interaction"):
-            with st.spinner("Saving interaction..."):
-                requests.post(f"{BASE_URL}/interactions", json={
-                    "lead_id": selected_lead_id,
-                    "type": interaction_type,
-                    "notes": notes
-                })
-
-            st.toast("✅ Interaction added")
-
-
-# -------- REMINDERS --------
-st.header("⏰ Reminders")
-
-col1, col2 = st.columns(2)
-
-with col1:
     if st.button("Generate Reminders"):
-        with st.spinner("Generating smart reminders..."):
-            requests.post(f"{BASE_URL}/reminders/generate")
+        requests.post(f"{BASE_URL}/reminders/generate")
 
-        st.toast("⏰ Reminders generated")
-
-with col2:
     if st.button("Load Reminders"):
-        with st.spinner("Fetching reminders..."):
-            res = requests.get(f"{BASE_URL}/reminders/")
-            reminders = res.json()
+        reminders = requests.get(f"{BASE_URL}/reminders/").json()
 
-        if not reminders:
-            st.warning("No reminders yet ⚠️")
-        else:
-            for r in reminders:
-                color = {
-                    "High": "red",
-                    "Medium": "orange",
-                    "Low": "green"
-                }.get(r["priority"], "gray")
+        for r in reminders:
+            color = {
+                "High": "#ef4444",
+                "Medium": "#f59e0b",
+                "Low": "#22c55e"
+            }.get(r["priority"], "#999")
 
-                st.markdown(f"""
-                <div style="padding:10px;border-left:5px solid {color};margin-bottom:10px;">
-                    <b>{r['message']}</b><br>
-                    Priority: <span style="color:{color}">{r['priority']}</span>
-                </div>
-                """, unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class='card' style='border-left:4px solid {color}'>
+                <b>{r['message']}</b><br>
+                <span class='subtext'>{r['priority']} Priority</span>
+            </div>
+            """, unsafe_allow_html=True)
 
+# ------------------ AI ------------------
+elif page == "AI":
+    st.title("AI Insights")
 
-# -------- AI SECTION --------
-st.header("🤖 AI Insights")
+    if not leads:
+        st.warning("No leads")
+        st.stop()
 
-if leads:
-    col1, col2, col3 = st.columns(3)
+    lead_map = {l["id"]: l for l in leads}
+    selected = st.selectbox("Select Lead", list(lead_map.keys()),
+        format_func=lambda x: lead_map[x]["name"])
 
-    with col1:
-        if st.button("✉️ Email"):
-            with st.spinner("Generating email..."):
-                res = requests.get(f"{BASE_URL}/ai/generate-email/{selected_lead_id}")
-            st.code(res.json()["email"], language="markdown")
+    col1, col2, col3, col4 = st.columns(4)
 
-    with col2:
-        if st.button("🧠 Summary"):
-            with st.spinner("Summarizing..."):
-                res = requests.get(f"{BASE_URL}/ai/summary/{selected_lead_id}")
-            st.info(res.json()["summary"])
+    result = ""
 
-    with col3:
-        if st.button("📊 Score"):
-            res = requests.get(f"{BASE_URL}/ai/score/{selected_lead_id}")
-            st.success(f"Score: {res.json()['score']}")
+    if col1.button("Email"):
+        result = requests.get(f"{BASE_URL}/ai/generate-email/{selected}").json()["email"]
 
+    if col2.button("Summary"):
+        result = requests.get(f"{BASE_URL}/ai/summary/{selected}").json()["summary"]
 
-# -------- NEXT ACTION --------
-st.header("🔥 Next Best Action")
+    if col3.button("Score"):
+        result = str(requests.get(f"{BASE_URL}/ai/score/{selected}").json()["score"])
 
-if leads:
-    if st.button("Get Recommendation"):
-        with st.spinner("Thinking... 🤖"):
-            res = requests.get(f"{BASE_URL}/ai/next-action/{selected_lead_id}")
+    if col4.button("Next Action"):
+        result = requests.get(f"{BASE_URL}/ai/next-action/{selected}").json()["next_action"]
 
-        st.success("🔥 " + res.json()["next_action"])
+    if result:
+        st.markdown(f"""
+        <div class='card'>
+            <pre>{result}</pre>
+        </div>
+        """, unsafe_allow_html=True)

@@ -1,7 +1,9 @@
+version: '3.8'
+
 services:
   backend:
     build: ./backend
-    container_name: backend
+    container_name: crm-backend
     ports:
       - "8000:8000"
     depends_on:
@@ -11,9 +13,9 @@ services:
 
   frontend:
     build: ./frontend
-    container_name: frontend
+    container_name: crm-frontend
     ports:
-      - "8501:8501"
+      - "5174:80"
     depends_on:
       - backend
 
